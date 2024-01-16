@@ -1,0 +1,5 @@
+id,code,firstName,lastName,password,accountCreation
+A,ST123,John,Doe,pass123,NotCreated
+B,ST456,Jane,Smith,pass456,Created
+C,ST789,Bob,Johnson,pass789,NotCreated
+
