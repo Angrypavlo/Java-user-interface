@@ -7,7 +7,13 @@ import javax.faces.bean.ApplicationScoped;
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import javax.sql.DataSource;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -19,7 +25,10 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import org.primefaces.PrimeFaces;
+import org.primefaces.event.FileUploadEvent;
 import org.primefaces.model.DualListModel;
+import org.primefaces.model.file.UploadedFile;
+
 import student_package.AccountCreation;
 import student_package.Student;
 
@@ -197,6 +206,7 @@ public class TeamView implements Serializable {
 	 * the selected team.
 	 */
 	public void editTeams() {
+		System.out.println(this.selectedTeams.get(0).getName());
 		this.teamMembers.setSource(availableStudents(this.selectedTeams.get(0)));
 		this.teamMembers.setTarget(this.selectedTeams.get(0).getStudents());
 		this.selectedTeam = this.selectedTeams.get(0);
@@ -440,5 +450,59 @@ public class TeamView implements Serializable {
 		} catch (SQLException e) {
 			e.printStackTrace();
 		}
+		
 	}
+	public void handleFileUpload(FileUploadEvent event) {
+		UploadedFile file = event.getFile();
+		importTeamsCSV(file);
+	}
+	public void importTeamsCSV(UploadedFile file) {
+	    try (InputStream is = file.getInputStream();
+	         BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+
+	        String line;
+	        Team team ; 
+	        line = reader.readLine();
+	        while ((line = reader.readLine()) != null) {
+	            String[] values = line.split(",");
+	            if (values.length == 3) {
+	                String[] studentIds = values[2].split(":");
+	                List<Student> students = new ArrayList<>(); 
+	                for (String studentId : studentIds) {
+	                    try (Connection connection = dataSource.getConnection();
+	                         PreparedStatement preparedStatement = connection.prepareStatement("SELECT * FROM student WHERE id = ?")) {
+	                        preparedStatement.setString(1, studentId);
+	                        ResultSet resultSet = preparedStatement.executeQuery();
+
+	                        if (resultSet.next()) {
+	                            Student student = new Student(
+	                                    resultSet.getString("id"),
+	                                    resultSet.getString("code"),
+	                                    resultSet.getString("firstName"),
+	                                    resultSet.getString("lastName"),
+	                                    resultSet.getString("password"),
+	                                    resultSet.getString("accountCreation").equals("Created")
+	                                            ? AccountCreation.Created
+	                                            : AccountCreation.NotCreated
+	                            );
+	                            students.add(student);
+	                        }
+	                    }
+	                }
+	               team = new Team(values[0], values[1], students); 
+	               AddTeam(team);
+	            }
+	        }
+
+	   
+
+	        PrimeFaces.current().ajax().update("form:messages", "form:dt-teams");
+	        FacesContext.getCurrentInstance().addMessage(null, new FacesMessage("File uploaded and data imported successfully!"));
+	    } catch (IOException | SQLException e) {
+	        e.printStackTrace(); 
+	        FacesContext.getCurrentInstance().addMessage(null, new FacesMessage(FacesMessage.SEVERITY_ERROR, "Error importing data from file!", null));
+	    }
+	}
+
+	
 }
