@@ -5,12 +5,20 @@ import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import javax.naming.Context;
 import javax.naming.InitialContext;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.primefaces.PrimeFaces;
+import org.primefaces.event.FileUploadEvent;
 import org.primefaces.model.DualListModel;
+import org.primefaces.model.file.UploadedFile;
 
 import student_package.AccountCreation;
 import student_package.Student;
@@ -589,6 +597,89 @@ public class ProjectView implements Serializable {
 			e.printStackTrace();
 		}
 
+	}
+	public void handleFileUpload(FileUploadEvent event) {
+		UploadedFile file = event.getFile();
+		importProjectsCSV(file);
+	}
+	public void importProjectsCSV(UploadedFile file) {
+	    try (InputStream is = file.getInputStream();
+	         BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+
+	        String line;
+	        line = reader.readLine();
+	        while ((line = reader.readLine()) != null) {
+	            String[] values = line.split(",");
+	            if (values.length == 6) {
+	                String[] teamsIds = values[2].split(":");
+	                List<ProjectTeam> teams = new ArrayList<>();
+	                List<String> submitted = new ArrayList<>();
+
+	                for (String teamId : teamsIds) {
+	                    try (Connection connection = dataSource.getConnection();
+	                         PreparedStatement preparedStatement = connection.prepareStatement("SELECT * FROM team WHERE id = ?")) {
+	                        preparedStatement.setString(1, teamId);
+	                        ResultSet resultSet = preparedStatement.executeQuery();
+
+	                        if (resultSet.next()) {
+	                            List<Student> students = new ArrayList<>();
+	                            String[] studentsIds = resultSet.getString("students").split(":");
+	                            
+	                            for (String studentId : studentsIds) {
+	                                try (Connection connection2 = dataSource.getConnection();
+	                                     PreparedStatement preparedStatement2 = connection2.prepareStatement("SELECT * FROM student WHERE id = ?")) {
+	                                    preparedStatement2.setString(1, studentId);
+	                                    ResultSet resultSet2 = preparedStatement2.executeQuery();
+
+	                                    if (resultSet2.next()) {
+	                                        Student student = new Student(
+	                                                resultSet2.getString("id"),
+	                                                resultSet2.getString("code"),
+	                                                resultSet2.getString("firstName"),
+	                                                resultSet2.getString("lastName"),
+	                                                resultSet2.getString("password"),
+	                                                resultSet2.getString("accountCreation").equals("Created")
+	                                                        ? AccountCreation.Created
+	                                                        : AccountCreation.NotCreated
+	                                        );
+	                                        students.add(student);
+	                                    }
+	                                }
+	                            }
+
+	                            Team team = new Team(
+	                                    resultSet.getString("id"),
+	                                    resultSet.getString("name"),
+	                                    students
+	                            );
+	                            teams.add(team);
+	                            
+	                            
+
+	                            // Extract and add submitted information
+	                            String[] submitList = values[5].split(":");
+	                            for (String submit : submitList) {
+	                                submitted.add(submit);
+	                            }
+	                        }
+	                    }
+	                }
+
+	                Project project = new Project(values[0], values[1],values[2], values[3], teams, submitted);
+	                AddProject(project);
+	                setSelectedProject(project);
+	                this.selectedProject.setProjectTeams(teams);
+	                UpdateProject(this.selectedProject);
+	                
+	            }
+	        }
+
+	        PrimeFaces.current().ajax().update("form:messages", "form:dt-teams");
+	        FacesContext.getCurrentInstance().addMessage(null, new FacesMessage("File uploaded and data imported successfully!"));
+	    } catch (IOException | SQLException e) {
+	        e.printStackTrace();
+	        FacesContext.getCurrentInstance().addMessage(null, new FacesMessage(FacesMessage.SEVERITY_ERROR, "Error importing data from file!", null));
+	    }
 	}
 
 }
