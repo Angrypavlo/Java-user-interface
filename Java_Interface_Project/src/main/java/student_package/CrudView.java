@@ -1,12 +1,22 @@
 package student_package;
 
 import javax.faces.bean.ManagedBean;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+
 import javax.annotation.PostConstruct;
+
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.primefaces.PrimeFaces;
+import org.primefaces.event.FileUploadEvent;
+import org.primefaces.model.file.UploadedFile;
 
 import javax.faces.application.FacesMessage;
 import javax.faces.context.FacesContext;
@@ -385,5 +395,43 @@ public class CrudView implements Serializable {
 			e.printStackTrace();
 		}
 		return students;
+	}
+	public boolean noSelectedStudents() {
+	    return selectedStudents == null || selectedStudents.isEmpty();
+	}
+	public void handleFileUpload(FileUploadEvent event) {
+		UploadedFile file = event.getFile();
+		importStudentsCSV(file);
+	}
+	public void importStudentsCSV(UploadedFile file) {
+	    try (InputStream is = file.getInputStream();
+	         BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+
+	        AccountCreation account;
+	        String line;
+	        line = reader.readLine();
+	        while ((line = reader.readLine()) != null) {
+	            
+	            String[] values = line.split(",");
+	            if(values.length==6) {
+	            	if(values[5]=="Created") {
+	            		account=AccountCreation.Created;
+	            	}
+	            	else {
+	            		account=AccountCreation.NotCreated;
+	            	}
+	            	Student student=new Student(values[0],values[1],values[2],values[3],values[4],account);
+	            	AddStudent(student);
+	            }
+	        }
+	        PrimeFaces.current().ajax().update("form:messages", "form:dt-students");
+	        FacesContext.getCurrentInstance().addMessage(null, new FacesMessage("File uploaded and data imported successfully!"));
+	  
+
+	    } catch (IOException e) {
+	        e.printStackTrace();
+	        FacesContext.getCurrentInstance().addMessage(null, new FacesMessage(FacesMessage.SEVERITY_ERROR, "Error during file upload.", null));
+	    }
+	    
 	}
 }
